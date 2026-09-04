@@ -14,6 +14,16 @@
                 <q-chip dense color="blue-1" text-color="blue-10" icon="directions_car">{{
                   vehicle
                 }}</q-chip>
+                <q-chip
+                  v-for="style in travelStyle"
+                  :key="style"
+                  dense
+                  color="orange-1"
+                  text-color="orange-10"
+                  icon="stars"
+                >
+                  {{ style }}
+                </q-chip>
               </div>
             </div>
 
@@ -227,10 +237,14 @@ let stopsMap = null
 let stopMarkers = []
 let googleMapsPromise = null
 
-const fromLabel = computed(() => String(route.query.from || 'Origin'))
-const toLabel = computed(() => String(route.query.to || 'Destination'))
-const travelDate = computed(() => normalizeDate(String(route.query.date || '')))
-const vehicle = computed(() => String(route.query.vehicle || 'Car'))
+const fromLabel = computed(() => String(route.query.destination || route.query.from || 'Origin'))
+const toLabel = computed(() => String(route.query.destination || route.query.to || 'Destination'))
+const travelDate = computed(() => normalizeDate(String(route.query.startDate || route.query.date || '')))
+const vehicle = computed(() => String(route.query.vehicleType || route.query.vehicle || 'Car'))
+const travelStyle = computed(() => {
+  const styles = route.query.travelStyle
+  return styles ? String(styles).split(',') : []
+})
 
 const roadAlerts = computed(() => {
   const base = [
