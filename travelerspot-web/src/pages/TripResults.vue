@@ -8,9 +8,8 @@
               <div class="text-overline text-primary">TravelersPot AI Trip Results</div>
               <div class="text-h4 text-weight-bold q-mb-sm">{{ fromLabel }} to {{ toLabel }}</div>
               <div class="row items-center q-gutter-sm text-grey-8">
-                <q-chip dense color="green-1" text-color="green-10" icon="event">{{
-                  travelDate
-                }}</q-chip>
+                <q-chip dense color="green-1" text-color="green-10" icon="event">{{ travelDate }} to {{ endDate }}</q-chip>
+                <q-chip dense color="indigo-1" text-color="indigo-10" icon="nightlight_round">{{ tripDurationText }}</q-chip>
                 <q-chip dense color="blue-1" text-color="blue-10" icon="directions_car">{{
                   vehicle
                 }}</q-chip>
@@ -36,7 +35,7 @@
                   <q-item-section>
                     <q-item-label class="text-caption">Estimated Distance</q-item-label>
                     <q-item-label class="text-weight-medium">{{
-                      routeSummary.distance
+                      estimatedDistance
                     }}</q-item-label>
                   </q-item-section>
                 </q-item>
@@ -48,7 +47,7 @@
                   <q-item-section>
                     <q-item-label class="text-caption">Estimated Time</q-item-label>
                     <q-item-label class="text-weight-medium">{{
-                      routeSummary.duration
+                      estimatedTime
                     }}</q-item-label>
                   </q-item-section>
                 </q-item>
@@ -71,6 +70,36 @@
       <q-card class="section-card q-mb-lg" flat bordered>
         <q-card-section>
           <div class="text-h6 text-weight-bold q-mb-md">1) Route Summary</div>
+          <p class="text-body1 text-grey-9 q-mb-md">
+            You are planning a {{ tripDurationText }} trip from <strong>{{ fromLabel }}</strong> to <strong>{{ toLabel }}</strong> traveling by {{ vehicle }}. Here are your routing options:
+          </p>
+          
+          <q-list v-if="availableRoutes.length > 0" bordered class="rounded-borders q-mb-md" separator>
+            <q-item v-for="(route, idx) in availableRoutes" :key="idx" :class="idx === 0 ? 'bg-blue-1' : ''">
+              <q-item-section avatar>
+                <q-icon :name="idx === 0 ? 'star' : 'alt_route'" :color="idx === 0 ? 'primary' : 'grey-7'" />
+              </q-item-section>
+              <q-item-section>
+                <q-item-label class="text-weight-bold">
+                  Route {{ idx + 1 }} {{ idx === 0 ? '(Fastest)' : '(Alternative)' }}
+                </q-item-label>
+                <q-item-label caption>Via {{ route.name }}</q-item-label>
+              </q-item-section>
+              <q-item-section side>
+                <div class="text-weight-medium text-dark">{{ route.distance }}</div>
+                <div class="text-caption text-grey-8">{{ route.duration }}</div>
+              </q-item-section>
+            </q-item>
+          </q-list>
+          
+          <div v-else-if="estimatedDistance !== 'Calculating...'" class="text-grey-7 q-mb-md">
+            No alternative routes found.
+          </div>
+          
+          <div v-if="vehicle.toLowerCase().includes('public')" class="text-orange-9 text-caption q-mb-md">
+            * Using road routes for public transport estimate. Actual transit times may vary.
+          </div>
+
           <div ref="routeMapEl" class="map-block q-mb-md"></div>
           <div v-if="routeError" class="text-negative text-body2">{{ routeError }}</div>
         </q-card-section>
@@ -222,9 +251,11 @@ const routeMapEl = ref(null)
 const stopsMapEl = ref(null)
 const routeError = ref('')
 
+const estimatedDistance = ref('Calculating...')
+const estimatedTime = ref('Calculating...')
+const availableRoutes = ref([])
+
 const routeSummary = ref({
-  distance: 'N/A',
-  duration: 'N/A',
   name: 'Best available route',
 })
 
@@ -232,14 +263,29 @@ const weather = ref(null)
 const itineraryStops = ref([])
 
 let routeMap = null
-let directionsRenderer = null
 let stopsMap = null
-let stopMarkers = []
-let googleMapsPromise = null
+let leafletPromise = null
 
-const fromLabel = computed(() => String(route.query.destination || route.query.from || 'Origin'))
-const toLabel = computed(() => String(route.query.destination || route.query.to || 'Destination'))
+const fromLabel = computed(() => {
+  const raw = route.query.startingPoint || route.query.from || 'Origin'
+  return decodeURIComponent(String(raw)).split(',')[0].trim()
+})
+const toLabel = computed(() => {
+  const raw = route.query.destination || route.query.to || 'Destination'
+  return decodeURIComponent(String(raw)).split(',')[0].trim()
+})
 const travelDate = computed(() => normalizeDate(String(route.query.startDate || route.query.date || '')))
+const endDate = computed(() => normalizeDate(String(route.query.endDate || '')))
+const tripDurationText = computed(() => {
+  if (!travelDate.value || !endDate.value) return '1 Day, 0 Nights'
+  const start = new Date(travelDate.value)
+  const end = new Date(endDate.value)
+  const diffTime = Math.abs(end - start)
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+  const days = diffDays > 0 ? diffDays : 1
+  const nights = Math.max(0, days - 1)
+  return `${days} Day${days !== 1 ? 's' : ''}, ${nights} Night${nights !== 1 ? 's' : ''}`
+})
 const vehicle = computed(() => String(route.query.vehicleType || route.query.vehicle || 'Car'))
 const travelStyle = computed(() => {
   const styles = route.query.travelStyle
@@ -335,85 +381,151 @@ const normalizeDate = (value) => {
   return new Date().toISOString().slice(0, 10)
 }
 
-const loadGoogleMaps = () => {
-  if (window.google?.maps) {
-    return Promise.resolve(window.google.maps)
-  }
+const loadLeaflet = () => {
+  if (window.L) return Promise.resolve(window.L)
+  if (leafletPromise) return leafletPromise
 
-  if (googleMapsPromise) return googleMapsPromise
-
-  if (!import.meta.env.VITE_GOOGLE_MAPS_API_KEY) {
-    return Promise.reject(new Error('Missing Google Maps API key'))
-  }
-
-  googleMapsPromise = new Promise((resolve, reject) => {
-    const existingScript = document.getElementById('google-maps-sdk')
-    if (existingScript) {
-      existingScript.addEventListener('load', () => resolve(window.google.maps))
-      existingScript.addEventListener('error', () =>
-        reject(new Error('Google Maps failed to load')),
-      )
-      return
-    }
+  leafletPromise = new Promise((resolve, reject) => {
+    const link = document.createElement('link')
+    link.rel = 'stylesheet'
+    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
+    document.head.appendChild(link)
 
     const script = document.createElement('script')
-    script.id = 'google-maps-sdk'
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY}`
-    script.async = true
-    script.defer = true
-    script.onload = () => resolve(window.google.maps)
-    script.onerror = () => reject(new Error('Google Maps failed to load'))
+    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
+    script.onload = () => resolve(window.L)
+    script.onerror = () => reject(new Error('Leaflet failed to load'))
     document.head.appendChild(script)
   })
 
-  return googleMapsPromise
+  return leafletPromise
 }
 
 const buildDirectionsRoute = async () => {
   routeError.value = ''
 
-  const maps = await loadGoogleMaps()
-  await nextTick()
+  estimatedDistance.value = 'Calculating...'
+  estimatedTime.value = 'Calculating...'
+  availableRoutes.value = []
 
-  if (!routeMapEl.value) return
+  try {
+    const cleanFrom = fromLabel.value.split(',')[0].trim()
+    const cleanTo = toLabel.value.split(',')[0].trim()
 
-  routeMap = new maps.Map(routeMapEl.value, {
-    center: { lat: 7.8731, lng: 80.7718 },
-    zoom: 8,
-    mapTypeControl: false,
-    streetViewControl: false,
-    fullscreenControl: true,
-  })
+    const nominatimOpts = {
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'TravelerspotApp/1.0'
+      }
+    }
 
-  directionsRenderer = new maps.DirectionsRenderer({ map: routeMap, suppressMarkers: false })
-  const directionsService = new maps.DirectionsService()
+    const [fromRes, toRes] = await Promise.all([
+      fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(cleanFrom)}&countrycodes=lk`, nominatimOpts).then(r => r.json()),
+      fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(cleanTo)}&countrycodes=lk`, nominatimOpts).then(r => r.json())
+    ])
 
-  const result = await new Promise((resolve, reject) => {
-    directionsService.route(
-      {
-        origin: fromLabel.value,
-        destination: toLabel.value,
-        travelMode: maps.TravelMode.DRIVING,
-      },
-      (response, status) => {
-        if (status === 'OK' && response) {
-          resolve(response)
-        } else {
-          reject(new Error(`Direction lookup failed: ${status}`))
-        }
-      },
-    )
-  })
+    if (!fromRes || fromRes.length === 0 || !toRes || toRes.length === 0) {
+      throw new Error('Location not found. Ensure valid city names.')
+    }
 
-  directionsRenderer.setDirections(result)
+    const fromCoords = { lat: fromRes[0].lat, lon: fromRes[0].lon }
+    const toCoords = { lat: toRes[0].lat, lon: toRes[0].lon }
 
-  const leg = result.routes?.[0]?.legs?.[0]
-  const summary = result.routes?.[0]?.summary
+    let osrmProfile = 'driving'
+    const vType = vehicle.value.toLowerCase()
+    if (vType.includes('bike') || vType.includes('cycle')) {
+      osrmProfile = 'bike'
+    } else if (vType.includes('walk') || vType.includes('foot')) {
+      osrmProfile = 'foot'
+    }
 
-  routeSummary.value = {
-    distance: leg?.distance?.text || 'N/A',
-    duration: leg?.duration?.text || 'N/A',
-    name: summary || 'Best available route',
+    const osrmRes = await fetch(`https://router.project-osrm.org/route/v1/${osrmProfile}/${fromCoords.lon},${fromCoords.lat};${toCoords.lon},${toCoords.lat}?overview=full&geometries=geojson&alternatives=true&steps=true`)
+    if (!osrmRes.ok) {
+      throw new Error(`OSRM API responded with status: ${osrmRes.status}`)
+    }
+    
+    const osrmData = await osrmRes.json()
+
+    if (osrmData.code !== 'Ok' || !osrmData.routes || osrmData.routes.length === 0) {
+      throw new Error('Could not calculate a route between the locations.')
+    }
+
+    const parsedRoutes = osrmData.routes.map(r => {
+      const dist = (r.distance / 1000).toFixed(1)
+      const durationMins = Math.round(r.duration / 60)
+      const h = Math.floor(durationMins / 60)
+      const m = durationMins % 60
+      const durText = h > 0 ? `${h} hr ${m} min` : `${m} min`
+
+      let rName = r.legs?.[0]?.summary || ''
+      if (!rName && r.legs?.[0]?.steps) {
+        const roadDistances = {}
+        let maxD = 0
+        r.legs[0].steps.forEach(step => {
+          const n = step.ref || step.name
+          if (n) {
+            roadDistances[n] = (roadDistances[n] || 0) + step.distance
+            if (roadDistances[n] > maxD) {
+              maxD = roadDistances[n]
+              rName = n
+            }
+          }
+        })
+      }
+
+      return {
+        name: rName || 'Available Route',
+        distance: `${dist} km`,
+        duration: durText,
+        geometry: r.geometry
+      }
+    })
+
+    availableRoutes.value = parsedRoutes
+
+    estimatedDistance.value = parsedRoutes[0].distance
+    estimatedTime.value = parsedRoutes[0].duration
+    routeSummary.value.name = parsedRoutes[0].name
+  } catch (err) {
+    console.error('API Fetch Failed:', err)
+    estimatedDistance.value = 'Unavailable'
+    estimatedTime.value = 'Unavailable'
+    routeSummary.value.name = 'Error fetching route'
+    availableRoutes.value = []
+    routeError.value = 'Failed to load accurate distance. The map will still display basic routing.'
+  }
+
+  try {
+    if (availableRoutes.value.length === 0 || !availableRoutes.value[0].geometry) return
+    const mainGeoJSON = availableRoutes.value[0].geometry
+
+    const L = await loadLeaflet()
+    await nextTick()
+
+    if (!routeMapEl.value) return
+
+    if (routeMap) {
+      routeMap.remove()
+    }
+
+    routeMap = L.map(routeMapEl.value).setView([7.8731, 80.7718], 8)
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(routeMap)
+
+    const routeLayer = L.geoJSON(mainGeoJSON, {
+      style: { color: '#0066ff', weight: 5, opacity: 0.8 }
+    }).addTo(routeMap)
+
+    const startPoint = mainGeoJSON.coordinates[0]
+    const endPoint = mainGeoJSON.coordinates[mainGeoJSON.coordinates.length - 1]
+    
+    L.marker([startPoint[1], startPoint[0]]).addTo(routeMap).bindPopup('<strong>Start</strong>')
+    L.marker([endPoint[1], endPoint[0]]).addTo(routeMap).bindPopup('<strong>Destination</strong>')
+
+    routeMap.fitBounds(routeLayer.getBounds(), { padding: [30, 30] })
+  } catch (e) {
+    console.error('Leaflet routing fallback failed', e)
   }
 }
 
@@ -476,129 +588,128 @@ const getCategoryIcon = (categoryLabel) => {
 }
 
 const selectStops = async () => {
-  const { data: placesData, error: placesError } = await supabase
-    .from('places')
-    .select('*')
-    .limit(400)
+  try {
+    const { data: placesData, error: placesError } = await supabase
+      .from('places')
+      .select('*')
+      .limit(400)
 
-  if (placesError) throw placesError
+    if (placesError) throw placesError
 
-  const places = placesData || []
+    const places = placesData || []
 
-  const filtered = places.filter((item) => {
-    const label = `${item.category || ''} ${item.name || ''}`.toLowerCase()
-    return (
-      label.includes('tea') ||
-      label.includes('cafe') ||
-      label.includes('restaurant') ||
-      label.includes('food') ||
-      label.includes('fuel') ||
-      label.includes('petrol') ||
-      label.includes('gas')
-    )
-  })
+    const filtered = places.filter((item) => {
+      const label = `${item.category || ''} ${item.name || ''}`.toLowerCase()
+      return (
+        label.includes('tea') ||
+        label.includes('cafe') ||
+        label.includes('restaurant') ||
+        label.includes('food') ||
+        label.includes('fuel') ||
+        label.includes('petrol') ||
+        label.includes('gas')
+      )
+    })
 
-  const placeIds = filtered.map((item) => item.id).filter(Boolean)
+    const placeIds = filtered.map((item) => item.id).filter(Boolean)
 
-  let reviewsData = []
-  if (placeIds.length) {
-    const { data: reviewRows } = await supabase
-      .from('reviews')
-      .select('id,place_id,rating,comment,photo_url,image_url,created_at')
-      .in('place_id', placeIds)
-      .order('created_at', { ascending: false })
+    let reviewsData = []
+    if (placeIds.length) {
+      const { data: reviewRows, error: reviewError } = await supabase
+        .from('reviews')
+        .select('id,place_id,rating,comment,photo_url,image_url,created_at')
+        .in('place_id', placeIds)
+        .order('created_at', { ascending: false })
 
-    reviewsData = reviewRows || []
-  }
-
-  const reviewsByPlace = new Map()
-  for (const review of reviewsData) {
-    if (!reviewsByPlace.has(review.place_id)) {
-      reviewsByPlace.set(review.place_id, [])
+      if (reviewError) throw reviewError
+      reviewsData = reviewRows || []
     }
-    reviewsByPlace.get(review.place_id).push(review)
-  }
 
-  const scored = filtered.map((item) => {
-    const reviews = reviewsByPlace.get(item.id) || []
-    const avgRating = reviews.length
-      ? reviews.reduce((sum, row) => sum + Number(row.rating || 0), 0) / reviews.length
-      : 0
-
-    const categoryLabel = getCategoryLabel(item.category || item.name)
-    return {
-      id: item.id,
-      name: item.name || 'Unnamed Stop',
-      description: item.description || 'No description yet.',
-      district: item.district || '',
-      categoryLabel,
-      icon: getCategoryIcon(categoryLabel),
-      coords: getCoords(item),
-      reviews: reviews.slice(0, 3).map((review) => ({
-        id: review.id,
-        comment: review.comment || 'No comment',
-      })),
-      photos: reviews
-        .map((review) => review.photo_url || review.image_url)
-        .filter(Boolean)
-        .slice(0, 3),
-      avgRating,
-      reviewCount: reviews.length,
+    const reviewsByPlace = new Map()
+    for (const review of reviewsData) {
+      if (!reviewsByPlace.has(review.place_id)) {
+        reviewsByPlace.set(review.place_id, [])
+      }
+      reviewsByPlace.get(review.place_id).push(review)
     }
-  })
 
-  const prioritized = scored.sort((a, b) => b.avgRating - a.avgRating)
+    const scored = filtered.map((item) => {
+      const reviews = reviewsByPlace.get(item.id) || []
+      const avgRating = reviews.length
+        ? reviews.reduce((sum, row) => sum + Number(row.rating || 0), 0) / reviews.length
+        : 0
 
-  const tea = prioritized.filter((item) => item.categoryLabel === 'Tea Shop').slice(0, 3)
-  const restaurants = prioritized.filter((item) => item.categoryLabel === 'Restaurant').slice(0, 3)
-  const fuel = prioritized.filter((item) => item.categoryLabel === 'Fuel Station').slice(0, 3)
+      const categoryLabel = getCategoryLabel(item.category || item.name)
+      return {
+        id: item.id,
+        name: item.name || 'Unnamed Stop',
+        description: item.description || 'No description yet.',
+        district: item.district || '',
+        categoryLabel,
+        icon: getCategoryIcon(categoryLabel),
+        coords: getCoords(item),
+        reviews: reviews.slice(0, 3).map((review) => ({
+          id: review.id,
+          comment: review.comment || 'No comment',
+        })),
+        photos: reviews
+          .map((review) => review.photo_url || review.image_url)
+          .filter(Boolean)
+          .slice(0, 3),
+        avgRating,
+        reviewCount: reviews.length,
+      }
+    })
 
-  itineraryStops.value = [...tea, ...restaurants, ...fuel]
+    const prioritized = scored.sort((a, b) => b.avgRating - a.avgRating)
+
+    const tea = prioritized.filter((item) => item.categoryLabel === 'Tea Shop').slice(0, 3)
+    const restaurants = prioritized.filter((item) => item.categoryLabel === 'Restaurant').slice(0, 3)
+    const fuel = prioritized.filter((item) => item.categoryLabel === 'Fuel Station').slice(0, 3)
+
+    itineraryStops.value = [...tea, ...restaurants, ...fuel]
+  } catch (err) {
+    console.error('Supabase fetch failed during selectStops:', err)
+    itineraryStops.value = []
+  }
 }
 
 const drawStopsMap = async () => {
-  const maps = await loadGoogleMaps()
-  await nextTick()
+  try {
+    const L = await loadLeaflet()
+    await nextTick()
 
-  if (!stopsMapEl.value) return
+    if (!stopsMapEl.value) return
 
-  const center = { lat: 7.8731, lng: 80.7718 }
+    if (stopsMap) {
+      stopsMap.remove()
+    }
 
-  stopsMap = new maps.Map(stopsMapEl.value, {
-    center,
-    zoom: 7,
-    mapTypeControl: false,
-    streetViewControl: false,
-    fullscreenControl: true,
-  })
+    const center = [7.8731, 80.7718]
 
-  stopMarkers.forEach((marker) => marker.setMap(null))
-  stopMarkers = []
+    stopsMap = L.map(stopsMapEl.value).setView(center, 7)
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(stopsMap)
 
-  const stopsWithCoords = itineraryStops.value.filter((item) => item.coords)
+    const stopsWithCoords = itineraryStops.value.filter((item) => item.coords)
 
-  if (!stopsWithCoords.length) return
+    if (!stopsWithCoords.length) return
 
-  const bounds = new maps.LatLngBounds()
+    const bounds = L.latLngBounds([])
 
-  stopMarkers = stopsWithCoords.map((item) => {
-    bounds.extend(item.coords)
+    stopsWithCoords.forEach((item) => {
+      const latlng = [item.coords.lat, item.coords.lng]
+      bounds.extend(latlng)
 
-    const marker = new maps.Marker({
-      position: item.coords,
-      map: stopsMap,
-      title: `${item.name} (${item.categoryLabel})`,
+      const marker = L.marker(latlng).addTo(stopsMap)
+      marker.bindPopup(`<strong>${item.name}</strong><br/>${item.categoryLabel}`)
     })
 
-    const infoWindow = new maps.InfoWindow({
-      content: `<strong>${item.name}</strong><br/>${item.categoryLabel}`,
-    })
-
-    marker.addListener('click', () => infoWindow.open({ anchor: marker, map: stopsMap }))
-    return marker
-  })
-
-  stopsMap.fitBounds(bounds)
+    stopsMap.fitBounds(bounds, { padding: [30, 30] })
+  } catch (e) {
+    console.error('Failed to draw stops map with Leaflet:', e)
+  }
 }
 
 const loadTripData = async () => {
@@ -607,31 +718,24 @@ const loadTripData = async () => {
   pageLoading.value = true
   routeError.value = ''
 
-  try {
-    await Promise.all([loadWeather(), selectStops()])
+  // Isolate each major background task so a single failure (like a Supabase DNS block) doesn't cascade and kill the routing.
+  await Promise.allSettled([
+    loadWeather().catch(err => console.error('Weather load error:', err)),
+    buildDirectionsRoute().catch(err => {
+      console.error('Routing crashed completely:', err)
+      estimatedDistance.value = 'Unavailable'
+      estimatedTime.value = 'Unavailable'
+    }),
+    selectStops()
+      .then(() => drawStopsMap())
+      .catch(err => console.error('Stops/Map load error:', err))
+  ])
 
-    try {
-      await buildDirectionsRoute()
-    } catch (error) {
-      routeError.value =
-        'Route preview could not be loaded. Verify Google Maps key and Directions API access.'
-      console.error(error)
-    }
-
-    try {
-      await drawStopsMap()
-    } catch (error) {
-      console.error('Failed to draw stops map:', error)
-    }
-  } catch (error) {
-    console.error('Trip results loading error:', error)
-  } finally {
-    pageLoading.value = false
-  }
+  pageLoading.value = false
 }
 
 watch(
-  () => [route.query.from, route.query.to, route.query.date, route.query.vehicle],
+  () => [route.query.startingPoint, route.query.destination, route.query.startDate, route.query.endDate, route.query.vehicleType],
   () => {
     loadTripData()
   },

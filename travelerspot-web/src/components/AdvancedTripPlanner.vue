@@ -7,8 +7,50 @@
 
       <!-- Form Grid Layout -->
       <div class="row q-col-gutter-md">
+        <!-- Where From? -->
+        <div class="col-12 col-md-3">
+          <label class="text-weight-medium text-dark q-mb-sm block">Where from?</label>
+          <q-select
+            v-model="formData.startingPoint"
+            :options="filteredStartingLocations"
+            use-input
+            hide-selected
+            fill-input
+            input-debounce="500"
+            @filter="filterStartingFn"
+            placeholder="Starting point"
+            outlined
+            dense
+            bg-color="white"
+            class="search-input"
+            hide-bottom-space
+            popup-content-class="bg-white text-black trip-planner-dropdown"
+            popup-content-style="background-color: white !important; box-shadow: 0px 10px 25px rgba(0,0,0,0.3) !important; z-index: 9999 !important;"
+            menu-anchor="bottom left"
+            menu-self="top left"
+          >
+            <template v-slot:prepend>
+              <q-icon name="my_location" color="primary" />
+            </template>
+            <template v-slot:option="scope">
+              <q-item v-bind="scope.itemProps" class="text-black bg-white">
+                <q-item-section class="text-black">
+                  <q-item-label class="text-black">{{ scope.opt }}</q-item-label>
+                </q-item-section>
+              </q-item>
+            </template>
+            <template v-slot:no-option>
+              <q-item>
+                <q-item-section class="text-grey">
+                  No results found
+                </q-item-section>
+              </q-item>
+            </template>
+          </q-select>
+        </div>
+
         <!-- Where To? -->
-        <div class="col-12 col-md-6">
+        <div class="col-12 col-md-3">
           <label class="text-weight-medium text-dark q-mb-sm block">Where to?</label>
           <q-select
             v-model="formData.destination"
@@ -16,17 +58,28 @@
             use-input
             hide-selected
             fill-input
-            input-debounce="0"
+            input-debounce="500"
             @filter="filterFn"
-            placeholder="Search district or city"
+            placeholder="Destination"
             outlined
             dense
             bg-color="white"
             class="search-input"
             hide-bottom-space
+            popup-content-class="bg-white text-black trip-planner-dropdown"
+            popup-content-style="background-color: white !important; box-shadow: 0px 10px 25px rgba(0,0,0,0.3) !important; z-index: 9999 !important;"
+            menu-anchor="bottom left"
+            menu-self="top left"
           >
             <template v-slot:prepend>
               <q-icon name="location_on" color="primary" />
+            </template>
+            <template v-slot:option="scope">
+              <q-item v-bind="scope.itemProps" class="text-black bg-white">
+                <q-item-section class="text-black">
+                  <q-item-label class="text-black">{{ scope.opt }}</q-item-label>
+                </q-item-section>
+              </q-item>
             </template>
             <template v-slot:no-option>
               <q-item>
@@ -43,37 +96,52 @@
           <label class="text-weight-medium text-dark q-mb-sm block">Start Date</label>
           <q-input
             v-model="formData.startDate"
-            type="date"
             outlined
             dense
             bg-color="white"
-            class="search-input"
+            class="search-input cursor-pointer"
             hide-bottom-space
+            mask="date"
+            placeholder="YYYY/MM/DD"
+            readonly
           >
             <template v-slot:prepend>
               <q-icon name="event" color="primary" />
             </template>
+            <q-popup-proxy cover transition-show="scale" transition-hide="scale" style="z-index: 9999 !important;" class="bg-white">
+              <q-date v-model="formData.startDate" class="bg-white text-dark" text-color="black">
+                <div class="row items-center justify-end">
+                  <q-btn v-close-popup label="Close" color="primary" flat />
+                </div>
+              </q-date>
+            </q-popup-proxy>
           </q-input>
         </div>
 
-        <!-- Number of Days -->
+        <!-- End Date -->
         <div class="col-12 col-md-3">
-          <label class="text-weight-medium text-dark q-mb-sm block">Duration (Days)</label>
+          <label class="text-weight-medium text-dark q-mb-sm block">End Date</label>
           <q-input
-            v-model.number="formData.numberOfDays"
-            type="number"
-            min="1"
-            max="365"
-            placeholder="e.g., 5"
+            v-model="formData.endDate"
             outlined
             dense
             bg-color="white"
-            class="search-input"
+            class="search-input cursor-pointer"
             hide-bottom-space
+            mask="date"
+            placeholder="YYYY/MM/DD"
+            readonly
           >
             <template v-slot:prepend>
-              <q-icon name="schedule" color="primary" />
+              <q-icon name="event" color="primary" />
             </template>
+            <q-popup-proxy cover transition-show="scale" transition-hide="scale" style="z-index: 9999 !important;" class="bg-white">
+              <q-date v-model="formData.endDate" :options="endDateOptions" class="bg-white text-dark" text-color="black">
+                <div class="row items-center justify-end">
+                  <q-btn v-close-popup label="Close" color="primary" flat />
+                </div>
+              </q-date>
+            </q-popup-proxy>
           </q-input>
         </div>
 
@@ -90,9 +158,20 @@
             map-option
             class="search-input"
             hide-bottom-space
+            popup-content-class="bg-white text-black trip-planner-dropdown"
+            popup-content-style="background-color: white !important; box-shadow: 0px 10px 25px rgba(0,0,0,0.3) !important; z-index: 9999 !important;"
+            menu-anchor="bottom left"
+            menu-self="top left"
           >
             <template v-slot:prepend>
               <q-icon name="directions_car" color="primary" />
+            </template>
+            <template v-slot:option="scope">
+              <q-item v-bind="scope.itemProps" class="text-black bg-white">
+                <q-item-section class="text-black">
+                  <q-item-label class="text-black">{{ scope.opt }}</q-item-label>
+                </q-item-section>
+              </q-item>
             </template>
           </q-select>
         </div>
@@ -140,22 +219,18 @@ import { useRouter } from 'vue-router'
 const router = useRouter()
 
 const formData = ref({
+  startingPoint: '',
   destination: '',
   startDate: '',
-  numberOfDays: null,
+  endDate: '',
   vehicleType: 'Car',
   travelStyle: [],
 })
 
 const isLoading = ref(false)
 
-const popularLocations = [
-  'Colombo', 'Kandy', 'Galle', 'Nuwara Eliya', 'Ella', 'Sigiriya',
-  'Anuradhapura', 'Trincomalee', 'Mirissa', 'Yala', 'Bentota',
-  'Polonnaruwa', 'Dambulla', 'Matara', 'Badulla', 'Hikkaduwa', 'Arugam Bay'
-]
-
-const filteredLocations = ref(popularLocations)
+const filteredLocations = ref([])
+const filteredStartingLocations = ref([])
 
 const vehicleOptions = ['Car', 'Van', 'Bike', 'Public Transport']
 
@@ -169,7 +244,6 @@ const travelStyleOptions = [
 
 const cardStyle = ref({
   background: 'rgba(255, 255, 255, 0.95)',
-  backdropFilter: 'blur(10px)',
   borderRadius: '16px',
   maxWidth: '900px',
   margin: '0 auto',
@@ -177,27 +251,59 @@ const cardStyle = ref({
 
 const isFormValid = computed(() => {
   return (
+    formData.value.startingPoint &&
+    formData.value.startingPoint.trim() !== '' &&
     formData.value.destination &&
     formData.value.destination.trim() !== '' &&
     formData.value.startDate !== '' &&
-    formData.value.numberOfDays > 0
+    formData.value.endDate !== '' &&
+    formData.value.endDate >= formData.value.startDate
   )
 })
 
-function filterFn(val, update) {
-  if (val === '') {
+const endDateOptions = (date) => {
+  if (!formData.value.startDate) return true;
+  return date >= formData.value.startDate;
+}
+
+async function filterStartingFn(val, update, abort) {
+  if (val.length < 2) {
     update(() => {
-      filteredLocations.value = popularLocations
+      filteredStartingLocations.value = []
     })
     return
   }
 
-  update(() => {
-    const needle = val.toLowerCase()
-    filteredLocations.value = popularLocations.filter(
-      v => v.toLowerCase().indexOf(needle) > -1
-    )
-  })
+  try {
+    const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(val)}&countrycodes=lk`)
+    const data = await response.json()
+    update(() => {
+      filteredStartingLocations.value = data.map(item => item.display_name)
+    })
+  } catch (error) {
+    console.error('Error fetching locations:', error)
+    abort()
+  }
+}
+
+async function filterFn(val, update, abort) {
+  if (val.length < 2) {
+    update(() => {
+      filteredLocations.value = []
+    })
+    return
+  }
+
+  try {
+    const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(val)}&countrycodes=lk`)
+    const data = await response.json()
+    update(() => {
+      filteredLocations.value = data.map(item => item.display_name)
+    })
+  } catch (error) {
+    console.error('Error fetching locations:', error)
+    abort()
+  }
 }
 
 function toggleTravelStyle(style) {
@@ -217,9 +323,10 @@ async function handleBuildTrip() {
   try {
     // Create query parameters from form data
     const queryParams = {
+      startingPoint: encodeURIComponent(formData.value.startingPoint),
       destination: encodeURIComponent(formData.value.destination),
       startDate: formData.value.startDate,
-      numberOfDays: formData.value.numberOfDays,
+      endDate: formData.value.endDate,
       vehicleType: formData.value.vehicleType,
       travelStyle: formData.value.travelStyle.join(','),
     }
@@ -293,3 +400,14 @@ label {
   display: block;
 }
 </style>
+
+<style>
+.trip-planner-dropdown .q-item__label, 
+.trip-planner-dropdown .q-item {
+  color: #000000 !important;
+  font-weight: 600 !important;
+  font-size: 16px !important;
+}
+</style>
+
+

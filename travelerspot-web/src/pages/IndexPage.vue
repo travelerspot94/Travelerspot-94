@@ -172,13 +172,7 @@ onMounted(() => {
   letter-spacing: -0.5px;
 }
 
-.search-card {
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(10px);
-  max-width: 900px;
-  margin: 0 auto;
-}
+
 
 .search-input :deep(.q-field__control) {
   border-radius: 10px;

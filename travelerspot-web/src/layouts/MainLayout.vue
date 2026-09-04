@@ -4,13 +4,14 @@
 
     <q-header
       :class="isScrolled ? 'bg-white text-dark shadow-2' : 'bg-transparent text-white'"
-      class="transition-header q-py-sm"
+      class="transition-header q-py-sm fixed-top"
+      style="z-index: 9999 !important;"
     >
       <q-toolbar>
         <!-- Logo -->
         <q-toolbar-title
-          class="text-weight-bold q-ml-md"
-          :class="isScrolled ? 'text-dark' : 'text-white'"
+          class="text-weight-bold q-ml-md transition-text"
+          :class="isScrolled ? 'text-grey-9' : 'text-white'"
           style="font-size: 24px;"
         >
           TravelersPot
@@ -27,48 +28,48 @@
             no-caps
             label="Home"
             to="/"
-            :class="isScrolled ? 'text-dark' : 'text-white'"
-            class="text-weight-medium q-mx-xs nav-btn"
+            :text-color="isScrolled ? 'grey-9' : 'white'"
+            class="text-weight-medium q-mx-xs nav-btn transition-text"
           />
           <q-btn
             flat
             no-caps
             label="Destinations"
             to="/destinations"
-            :class="isScrolled ? 'text-dark' : 'text-white'"
-            class="text-weight-medium q-mx-xs nav-btn"
+            :text-color="isScrolled ? 'grey-9' : 'white'"
+            class="text-weight-medium q-mx-xs nav-btn transition-text"
           />
           <q-btn
             flat
             no-caps
             label="Activities"
             to="/activities"
-            :class="isScrolled ? 'text-dark' : 'text-white'"
-            class="text-weight-medium q-mx-xs nav-btn"
+            :text-color="isScrolled ? 'grey-9' : 'white'"
+            class="text-weight-medium q-mx-xs nav-btn transition-text"
           />
           <q-btn
             flat
             no-caps
             label="Tours"
             to="/tours"
-            :class="isScrolled ? 'text-dark' : 'text-white'"
-            class="text-weight-medium q-mx-xs nav-btn"
+            :text-color="isScrolled ? 'grey-9' : 'white'"
+            class="text-weight-medium q-mx-xs nav-btn transition-text"
           />
           <q-btn
             flat
             no-caps
             label="Blog"
             to="/blog"
-            :class="isScrolled ? 'text-dark' : 'text-white'"
-            class="text-weight-medium q-mx-xs nav-btn"
+            :text-color="isScrolled ? 'grey-9' : 'white'"
+            class="text-weight-medium q-mx-xs nav-btn transition-text"
           />
           <q-btn
             flat
             no-caps
             label="Contact"
             to="/contact"
-            :class="isScrolled ? 'text-dark' : 'text-white'"
-            class="text-weight-medium q-mx-xs nav-btn"
+            :text-color="isScrolled ? 'grey-9' : 'white'"
+            class="text-weight-medium q-mx-xs nav-btn transition-text"
           />
         </div>
 
@@ -79,8 +80,8 @@
           round
           icon="menu"
           aria-label="Menu"
-          :class="isScrolled ? 'text-dark' : 'text-white'"
-          class="lt-md q-mr-sm"
+          :text-color="isScrolled ? 'grey-9' : 'white'"
+          class="lt-md q-mr-sm transition-text"
           @click="toggleLeftDrawer"
         />
       </q-toolbar>
@@ -143,6 +144,10 @@ function onScroll(info) {
 }
 .nav-btn:hover {
   background: rgba(0, 156, 166, 0.1);
-  color: var(--q-primary);
+  color: var(--q-primary) !important;
+}
+
+.transition-text {
+  transition: color 0.3s ease;
 }
 </style>
